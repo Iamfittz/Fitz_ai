@@ -10,7 +10,7 @@ namespace Fitz_ai
     //which we get from the configuration file.
     public class BotConfiguration
     {
-        public TwitterConfig Twitter {  get; set; }
+        public TwitterConfig Twitter { get; set; }
         public OpenAIConfig OpenAI { get; set; }
     }
 
