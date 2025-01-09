@@ -34,22 +34,68 @@ namespace Fitz_ai
 
         public async Task ProcessMentionsAsync()
         {
-            // Получаем параметры из конфигурации
-            var sinceId = _botConfiguration.Twitter.SinceId;
-            var count = _botConfiguration.Twitter.MentionCount;
-
-            // Получаем новые упоминания
-            var mentions = await _twitterClient.Timelines.GetMentionsTimelineAsync(new GetMentionsTimelineParameters
+            try
             {
-                SinceId = sinceId,
-                PageSize = count,
-                TrimUser = true,
-                IncludeEntities = false
-            });
+                // Get parameters from configuration
+                var sinceId = _botConfiguration.Twitter.SinceId;
+                var count = _botConfiguration.Twitter.MentionCount;
 
-            // ... (обработка упоминаний будет здесь)
+                // Receiving new mentions
+                var mentions = await _twitterClient.Timelines.GetMentionsTimelineAsync(new GetMentionsTimelineParameters
+                {
+                    SinceId = sinceId, // Start reading from our "bookmark"
+                    PageSize = count, // Take the specified number of tweets
+                    TrimUser = true, // Do not load unnecessary information about users
+                    IncludeEntities = false // Do not load additional tweet entities
+                });
+
+                if(mentions !=null && mentions.Any()) // Check if there are new mentions
+                {
+                    foreach(var mention in mentions) // For each mention
+                    {
+                        //Generate response using AI
+                        string aiResponse = await GenerateAIResponseAsync(mention.Text);
+
+                        if(!string.IsNullOrEmpty(aiResponse)) // If the AI ​​successfully generated a response
+                        {
+                            // Publish the response as a reply to the mention
+                            await PublishTweetAsync(aiResponse, mention.Id);
+                        }
+                        // Update SinceId to avoid processing the same tweets
+                        _botConfiguration.Twitter.SinceId = mention.Id;
+                    }
+
+                    _logger.LogInformation($"Processed {mentions.Count()} mentions");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing mentions");
+            }
+         
         }
 
+        public async Task RunAsync(int checkInterval = 60)
+        {
+            try
+            {
+                _logger.LogInformation("The bot has been launched and is starting to work");
+                // Publish the starting message
+                await PublishTweetAsync("Hello! I'm an AI bot and I'm online! 🤖");
+
+                while (true)
+                {
+                    await ProcessMentionsAsync();
+                    // Wait the specified number of seconds before the next check
+                    await Task.Delay(checkInterval + 1000);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Critical error in the bot");
+                throw;
+            }
+        }
         private async Task<string> GenerateAIResponseAsync(string promt)
         {
             try
