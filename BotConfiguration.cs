@@ -25,12 +25,13 @@ namespace Fitz_ai
         public long SinceId { get; set; }
         public int MentionCount { get; set; }
 
+        public int MonthlyTweetCount { get; set; } = 0;
+        public DateTime LastResetDate { get; set; } = DateTime.Now;
+
     }
 
     public class OpenAIConfig
     {
         public string ApiKey { get; set; }
     }
-
-    
 }
