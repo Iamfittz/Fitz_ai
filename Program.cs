@@ -23,10 +23,25 @@ namespace Fitz_ai
                    .Build();
                 // Получаем настройки бота
                 var botConfig = configuration.Get<BotConfiguration>();
-            }
-            catch
-            {
+                using (var loggerFactory = LoggerFactory.Create(builder =>
+                {
+                    builder
+                        .AddConsole()
+                        .SetMinimumLevel(LogLevel.Information);
+                }))
+                {
+                    var logger = loggerFactory.CreateLogger<TwitterAIBot>();
+                    var bot = new TwitterAIBot(botConfig, logger);
 
+                    Console.WriteLine("Бот запускается...");
+                    await bot.RunAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Критическая ошибка: {ex.Message}");
+                Console.WriteLine("Нажмите любую клавишу для выхода...");
+                Console.ReadKey();
             }
         }
     }
