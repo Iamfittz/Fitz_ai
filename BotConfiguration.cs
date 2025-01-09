@@ -21,10 +21,16 @@ namespace Fitz_ai
         public string AccessToken {  get; set; }
         public string AccessTokenSecret { get; set; }
         public string BearerToken {  get; set; }
+
+        public long SinceId { get; set; }
+        public int MentionCount { get; set; }
+
     }
 
     public class OpenAIConfig
     {
         public string ApiKey { get; set; }
     }
+
+    
 }
