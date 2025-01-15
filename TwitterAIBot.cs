@@ -10,6 +10,7 @@ using Tweetinvi.Parameters;
 using Tweetinvi.Models;
 using Tweetinvi.Core.Models;
 using Tweetinvi.Parameters.V2;
+using Tweetinvi.Client.V2;
 
 namespace Fitz_ai
 {
@@ -35,81 +36,135 @@ namespace Fitz_ai
             _openAIAPI = new OpenAIAPI(botConfiguration.OpenAI.ApiKey);
         }
 
+        //public async Task ProcessMentionsAsync()
+        //{
+        //    try
+        //    {
+        //        var sinceId = _botConfiguration.Twitter.SinceId;
+        //        var searchParameters = new SearchTweetsV2Parameters("@Fitz_AI_bot -is:retweet");
+
+        //        // Добавляем SinceId только если он больше 0
+        //        if (sinceId > 0)
+        //        {
+        //            searchParameters.SinceId = sinceId.ToString();
+        //        }
+
+        //        searchParameters.TweetFields = new HashSet<string> { "author_id", "created_at" };
+
+        //        var mentions = await _twitterClient.SearchV2.SearchTweetsAsync(searchParameters);
+
+        //        // Остальной код остается тем же
+        //        if (mentions?.Tweets != null && mentions.Tweets.Any())
+        //        {
+        //            foreach (var mention in mentions.Tweets)
+        //            {
+        //                // Добавляем небольшую задержку между обработкой твитов
+        //                await Task.Delay(2000); // 2 секунды между твитами
+
+        //                string aiResponse = await GenerateAIResponseAsync(mention.Text);
+        //                if (!string.IsNullOrEmpty(aiResponse))
+        //                {
+        //                    try
+        //                    {
+        //                        await _twitterClient.Tweets.PublishTweetAsync(
+        //                            new PublishTweetParameters(aiResponse)
+        //                            {
+        //                                InReplyToTweetId = long.Parse(mention.Id)
+        //                            });
+        //                        _logger.LogInformation($"Ответили на твит {mention.Id}: {aiResponse}");
+
+        //                        // Добавляем задержку после публикации
+        //                        await Task.Delay(2000);
+        //                    }
+        //                    catch (Exception ex)
+        //                    {
+        //                        _logger.LogError(ex, $"Ошибка при ответе на твит {mention.Id}");
+        //                    }
+        //                }
+        //                _botConfiguration.Twitter.SinceId = long.Parse(mention.Id);
+        //            }
+        //            _logger.LogInformation($"Обработано {mentions.Tweets.Length} упоминаний");
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Ошибка при обработке упоминаний");
+        //    }
+        //}
         public async Task ProcessMentionsAsync()
         {
             try
             {
-                var sinceId = _botConfiguration.Twitter.SinceId;
-                var searchParameters = new SearchTweetsV2Parameters("@Fitz_AI_bot -is:retweet");
+                _logger.LogInformation("Checking for mentions...");
 
-                // Добавляем SinceId только если он больше 0
-                if (sinceId > 0)
+                var searchParameters = new SearchTweetsV2Parameters("@Fitz_AI_bot -is:retweet")
                 {
-                    searchParameters.SinceId = sinceId.ToString();
-                }
-
-                searchParameters.TweetFields = new HashSet<string> { "author_id", "created_at" };
+                    TweetFields = new HashSet<string> { "author_id", "created_at" }
+                };
 
                 var mentions = await _twitterClient.SearchV2.SearchTweetsAsync(searchParameters);
 
-                // Остальной код остается тем же
                 if (mentions?.Tweets != null && mentions.Tweets.Any())
                 {
                     foreach (var mention in mentions.Tweets)
                     {
                         // Добавляем небольшую задержку между обработкой твитов
-                        await Task.Delay(2000); // 2 секунды между твитами
+                        await Task.Delay(2000);
 
                         string aiResponse = await GenerateAIResponseAsync(mention.Text);
                         if (!string.IsNullOrEmpty(aiResponse))
                         {
-                            try
-                            {
-                                await _twitterClient.Tweets.PublishTweetAsync(
-                                    new PublishTweetParameters(aiResponse)
-                                    {
-                                        InReplyToTweetId = long.Parse(mention.Id)
-                                    });
-                                _logger.LogInformation($"Ответили на твит {mention.Id}: {aiResponse}");
+                            bool published = await PublishTweetAsync(aiResponse, long.Parse(mention.Id));
 
-                                // Добавляем задержку после публикации
-                                await Task.Delay(2000);
-                            }
-                            catch (Exception ex)
+                            if (published)
                             {
-                                _logger.LogError(ex, $"Ошибка при ответе на твит {mention.Id}");
+                                _logger.LogInformation($"Successfully replied to tweet {mention.Id}");
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"Failed to publish reply to tweet {mention.Id}");
                             }
                         }
+
                         _botConfiguration.Twitter.SinceId = long.Parse(mention.Id);
                     }
-                    _logger.LogInformation($"Обработано {mentions.Tweets.Length} упоминаний");
+
+                    _logger.LogInformation($"Processed {mentions.Tweets.Length} mentions");
+                }
+                else
+                {
+                    _logger.LogInformation("No new mentions found");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при обработке упоминаний");
+                _logger.LogError(ex, "Error processing mentions");
+                await Task.Delay(5000); // Добавляем задержку при ошибке
             }
         }
-        public async Task RunAsync(int checkInterval = 300) // Увеличили интервал до 5 минут (300 секунд)
+
+        public async Task RunAsync(int checkInterval = 900) // 15 минут (900 секунд)
         {
             try
             {
                 _logger.LogInformation("The bot has been launched and is starting to work");
-
                 await TestConnection();
+
                 while (true)
                 {
                     try
                     {
+                        _logger.LogInformation("Checking for mentions...");
                         await ProcessMentionsAsync();
+                        _logger.LogInformation("Waiting 15 minutes before next check (Twitter API limit)");
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error during ProcessMentionsAsync");
                     }
 
-                    // Ждем 5 минут перед следующей проверкой
-                    await Task.Delay(checkInterval * 1000);
+                    // Ждём 15 минут + небольшой запас (5 секунд)
+                    await Task.Delay(905 * 1000);
                 }
             }
             catch (Exception ex)
@@ -118,8 +173,6 @@ namespace Fitz_ai
                 throw;
             }
         }
-
-
         private async Task TestConnection()
         {
             try
@@ -161,10 +214,48 @@ namespace Fitz_ai
             //    _logger.LogError(ex, "Error generating AI response");
             //    return null;
             //}
-            // Временное решение для тестирования
-            return $"Тестовый ответ на ваше сообщение: {promt}";
+            await Task.Delay(500);  // Небольшая задержка для имитации "размышления"
+
+            // Простой ответ для тестирования
+            return $"Hello! Test answering {promt}";
         }
 
+        //private async Task<bool> PublishTweetAsync(string text, long? replyToTweetId = null)
+        //{
+        //    try
+        //    {
+        //        // Проверяем лимиты перед публикацией
+        //        if (!CanPublishTweet())
+        //        {
+        //            return false;
+        //        }
+
+        //        // Создаем параметры для публикации твита
+        //        var tweetParams = new PublishTweetParameters(text)
+        //        {
+        //            InReplyToTweetId = replyToTweetId
+        //        };
+
+        //        // Публикуем твит
+        //        var publishedTweet = await _twitterClient.Tweets.PublishTweetAsync(tweetParams);
+
+        //        if (publishedTweet != null)
+        //        {
+        //            // Увеличиваем счетчик твитов
+        //            _botConfiguration.Twitter.MonthlyTweetCount++;
+        //            _logger.LogInformation($"Tweet successfully published: {text}. Monthly count: {_botConfiguration.Twitter.MonthlyTweetCount}");
+        //            return true;
+        //        }
+
+        //        _logger.LogWarning("Failed to publish tweet.");
+        //        return false;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Error posting tweet");
+        //        return false;
+        //    }
+        //}
         private async Task<bool> PublishTweetAsync(string text, long? replyToTweetId = null)
         {
             try
@@ -172,6 +263,7 @@ namespace Fitz_ai
                 // Проверяем лимиты перед публикацией
                 if (!CanPublishTweet())
                 {
+                    _logger.LogWarning("Tweeting limits exceeded.");
                     return false;
                 }
 
