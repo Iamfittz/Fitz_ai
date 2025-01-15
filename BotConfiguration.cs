@@ -13,7 +13,6 @@ namespace Fitz_ai
         public TwitterConfig Twitter { get; set; }
         public OpenAIConfig OpenAI { get; set; }
     }
-
     public class TwitterConfig
     {
         public string ConsumerKey {  get; set; }
@@ -21,13 +20,10 @@ namespace Fitz_ai
         public string AccessToken {  get; set; }
         public string AccessTokenSecret { get; set; }
         public string BearerToken {  get; set; }
-
         public long SinceId { get; set; }
         public int MentionCount { get; set; }
-
         public int MonthlyTweetCount { get; set; } = 0;
         public DateTime LastResetDate { get; set; } = DateTime.Now;
-
     }
 
     public class OpenAIConfig
