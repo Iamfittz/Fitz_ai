@@ -11,6 +11,10 @@ using Tweetinvi.Models;
 using Tweetinvi.Core.Models;
 using Tweetinvi.Parameters.V2;
 using Tweetinvi.Client.V2;
+using Tweetinvi.Core.Web;
+using Tweetinvi.Exceptions;
+using System.Net.Http;
+using System.Text.Json;
 
 namespace Fitz_ai
 {
@@ -157,14 +161,23 @@ namespace Fitz_ai
                         _logger.LogInformation("Checking for mentions...");
                         await ProcessMentionsAsync();
                         _logger.LogInformation("Waiting 15 minutes before next check (Twitter API limit)");
+
+                        var startTime = DateTime.Now;
+                        var endTime = startTime.AddSeconds(checkInterval);
+
+                        while(DateTime.Now < endTime)
+                        {
+                            var timeLeft = endTime - DateTime.Now;
+                            Console.SetCursorPosition(0, Console.CursorTop);
+                            Console.Write($"Next check in: {timeLeft.Minutes:00}:{timeLeft.Seconds:00}  ");
+                            await Task.Delay(1000);
+                        }
+                        Console.WriteLine();// Переход на новую строку перед следующей проверкой
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error during ProcessMentionsAsync");
                     }
-
-                    // Ждём 15 минут + небольшой запас (5 секунд)
-                    await Task.Delay(905 * 1000);
                 }
             }
             catch (Exception ex)
@@ -256,35 +269,78 @@ namespace Fitz_ai
         //        return false;
         //    }
         //}
+        //private async Task<bool> PublishTweetAsync(string text, long? replyToTweetId = null)
+        //{
+        //    try
+        //    {
+        //        if (!CanPublishTweet())
+        //        {
+        //            return false;
+        //        }
+
+        //        // Используем напрямую API v2 через HttpClient
+        //        using (var httpClient = new HttpClient())
+        //        {
+        //            httpClient.DefaultRequestHeaders.Authorization =
+        //                new System.Net.Http.Headers.AuthenticationHeaderValue(
+        //                    "Bearer",
+        //                    _botConfiguration.Twitter.BearerToken);
+
+        //            var content = new StringContent(
+        //                JsonSerializer.Serialize(new
+        //                {
+        //                    text = text,
+        //                    reply = replyToTweetId != null ? new { in_reply_to_tweet_id = replyToTweetId.ToString() } : null
+        //                }),
+        //                Encoding.UTF8,
+        //                "application/json");
+
+        //            var response = await httpClient.PostAsync(
+        //                "https://api.twitter.com/2/tweets",
+        //                content);
+
+        //            if (response.IsSuccessStatusCode)
+        //            {
+        //                _botConfiguration.Twitter.MonthlyTweetCount++;
+        //                _logger.LogInformation($"Tweet successfully published: {text}. Monthly count: {_botConfiguration.Twitter.MonthlyTweetCount}");
+        //                return true;
+        //            }
+
+        //            var errorContent = await response.Content.ReadAsStringAsync();
+        //            _logger.LogWarning($"Failed to publish tweet. Status: {response.StatusCode}, Error: {errorContent}");
+        //            return false;
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Error posting tweet");
+        //        return false;
+        //    }
+        //}
         private async Task<bool> PublishTweetAsync(string text, long? replyToTweetId = null)
         {
             try
             {
-                // Проверяем лимиты перед публикацией
                 if (!CanPublishTweet())
                 {
-                    _logger.LogWarning("Tweeting limits exceeded.");
                     return false;
                 }
 
-                // Создаем параметры для публикации твита
-                var tweetParams = new PublishTweetParameters(text)
+                var publishParameters = new PublishTweetParameters(text)
                 {
-                    InReplyToTweetId = replyToTweetId
+                    InReplyToTweetId = replyToTweetId,
+                    AutoPopulateReplyMetadata = true
                 };
 
-                // Публикуем твит
-                var publishedTweet = await _twitterClient.Tweets.PublishTweetAsync(tweetParams);
+                await _twitterClient.Tweets.PublishTweetAsync(publishParameters);
 
-                if (publishedTweet != null)
-                {
-                    // Увеличиваем счетчик твитов
-                    _botConfiguration.Twitter.MonthlyTweetCount++;
-                    _logger.LogInformation($"Tweet successfully published: {text}. Monthly count: {_botConfiguration.Twitter.MonthlyTweetCount}");
-                    return true;
-                }
-
-                _logger.LogWarning("Failed to publish tweet.");
+                _botConfiguration.Twitter.MonthlyTweetCount++;
+                _logger.LogInformation($"Tweet successfully published: {text}. Monthly count: {_botConfiguration.Twitter.MonthlyTweetCount}");
+                return true;
+            }
+            catch (TwitterException ex)
+            {
+                _logger.LogError($"Twitter API Error: {ex.TwitterDescription}");
                 return false;
             }
             catch (Exception ex)
@@ -293,7 +349,6 @@ namespace Fitz_ai
                 return false;
             }
         }
-
         private bool CanPublishTweet()
         {
             try
